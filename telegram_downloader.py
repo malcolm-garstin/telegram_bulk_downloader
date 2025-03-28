@@ -105,7 +105,7 @@ class TelegramDownloader:
             print(f"{i:<6} {dialog['id']:<12} {dialog['type']:<10} {dialog['name']:<30}")
     
     async def download_media(self, entity_id: int, media_type: str = 'all', 
-                          limit: int = 100, offset_date: Optional[datetime] = None,
+                          limit: Optional[int] = 100, offset_date: Optional[datetime] = None,
                           contains: Optional[str] = None) -> None:
         """
         Download media from a specific chat/group.
@@ -113,7 +113,7 @@ class TelegramDownloader:
         Args:
             entity_id: ID of the chat/group
             media_type: Type of media to download ('all', 'photos', 'documents', 'links', 'gifs')
-            limit: Maximum number of messages to process
+            limit: Maximum number of messages to process (None for unlimited)
             offset_date: Only download media after this date
             contains: Only download media from messages containing this text
         """
@@ -159,6 +159,7 @@ class TelegramDownloader:
         
         # Download media from messages
         downloaded_count = 0
+        skipped_count = 0
         links_file = None
         
         if media_type == 'links' or media_type == 'all':
@@ -171,6 +172,18 @@ class TelegramDownloader:
                     if isinstance(message.media, (MessageMediaPhoto, MessageMediaDocument)):
                         # Download photos and documents
                         if media_type in ['all', 'photos', 'documents', 'gifs']:
+                            # Get the filename without downloading
+                            attributes = getattr(message.media, 'document', None)
+                            if attributes and hasattr(attributes, 'attributes'):
+                                for attr in attributes.attributes:
+                                    if hasattr(attr, 'file_name') and attr.file_name:
+                                        potential_path = entity_dir / attr.file_name
+                                        if potential_path.exists():
+                                            print(f"Skipping existing file: {attr.file_name}")
+                                            skipped_count += 1
+                                            continue
+                            
+                            # Download if file doesn't exist
                             filename = await self.client.download_media(message, entity_dir)
                             if filename:
                                 downloaded_count += 1
@@ -195,6 +208,8 @@ class TelegramDownloader:
             links_file.close()
         
         print(f"\nDownloaded/extracted {downloaded_count} items from {entity_name}.")
+        if skipped_count > 0:
+            print(f"Skipped {skipped_count} already existing files.")
 
     async def close(self) -> None:
         """
@@ -210,7 +225,7 @@ async def main():
     parser.add_argument('--entity-id', type=int, help='ID of the group/channel to download from')
     parser.add_argument('--media-type', choices=['all', 'photos', 'documents', 'links', 'gifs'], 
                         default='all', help='Type of media to download')
-    parser.add_argument('--limit', type=int, default=100, help='Maximum number of messages to process')
+    parser.add_argument('--limit', type=int, default=100, help='Maximum number of messages to process (0 for unlimited)')
     parser.add_argument('--days', type=int, help='Only download media from the last N days')
     parser.add_argument('--contains', type=str, help='Only download media from messages containing this text')
     parser.add_argument('--download-dir', type=str, default=DEFAULT_DOWNLOAD_DIR, 
@@ -252,11 +267,14 @@ async def main():
             if args.days:
                 offset_date = datetime.now() - timedelta(days=args.days)
             
+            # Convert limit of 0 to None for unlimited downloads
+            actual_limit = None if args.limit == 0 else args.limit
+            
             # Download media
             await downloader.download_media(
                 entity_id=args.entity_id,
                 media_type=args.media_type,
-                limit=args.limit,
+                limit=actual_limit,
                 offset_date=offset_date,
                 contains=args.contains
             )

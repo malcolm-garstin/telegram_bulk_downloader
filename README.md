@@ -1,21 +1,20 @@
 # Telegram Bulk Downloader
 
-A Python script to bulk download files, photos, shared links, and GIFs from any Telegram group or channel that the authenticated user is part of.
+A Python script to bulk download files, photos, shared links, and GIFs from Telegram groups that the authenticated user is part of.
 
 ## Features
 
-- Download multiple types of media (photos, documents, GIFs)
-- Extract shared links from messages
+- Download multiple types of media: photos, documents, links, and GIFs
 - Filter downloads by date range
 - Filter downloads by message content
-- Limit the number of messages to process
-- List all available groups/channels
+- Extract links from messages and web pages
+- Unlimited download option (use `--limit 0`)
+- Skip already downloaded files to avoid duplicates
 
 ## Requirements
 
-- Python 3.12 or higher
-- Telegram account
-- Telegram API credentials
+- Python 3.6+
+- Telegram API credentials (API ID and API Hash)
 
 ## Installation
 

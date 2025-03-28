@@ -11,6 +11,7 @@ import sys
 import asyncio
 import re
 import argparse
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
@@ -161,11 +162,16 @@ class TelegramDownloader:
         downloaded_count = 0
         skipped_count = 0
         links_file = None
+        total_bytes = 0
+        start_time = time.time()
         
         if media_type == 'links' or media_type == 'all':
             links_file = open(entity_dir / 'extracted_links.txt', 'w', encoding='utf-8')
         
-        for message in tqdm(messages, desc="Downloading"):
+        # Create a progress bar with bright green color
+        progress_bar = tqdm(messages, desc="Downloading", colour='green')
+        
+        for message in progress_bar:
             try:
                 # Handle different media types
                 if message.media:
@@ -174,19 +180,29 @@ class TelegramDownloader:
                         if media_type in ['all', 'photos', 'documents', 'gifs']:
                             # Get the filename without downloading
                             attributes = getattr(message.media, 'document', None)
+                            file_size = getattr(attributes, 'size', 0) if attributes else 0
+                            
                             if attributes and hasattr(attributes, 'attributes'):
                                 for attr in attributes.attributes:
                                     if hasattr(attr, 'file_name') and attr.file_name:
                                         potential_path = entity_dir / attr.file_name
                                         if potential_path.exists():
-                                            print(f"Skipping existing file: {attr.file_name}")
+                                            progress_bar.write(f"Skipping existing file: {attr.file_name}")
                                             skipped_count += 1
                                             continue
                             
                             # Download if file doesn't exist
+                            before_size = total_bytes
                             filename = await self.client.download_media(message, entity_dir)
                             if filename:
                                 downloaded_count += 1
+                                total_bytes += file_size
+                                
+                                # Calculate and display download speed
+                                elapsed = time.time() - start_time
+                                if elapsed > 0:
+                                    speed_mbps = (total_bytes * 8) / (elapsed * 1_000_000)
+                                    progress_bar.set_postfix({"Speed": f"{speed_mbps:.2f} Mbps", "Downloaded": f"{downloaded_count}"})
                     
                     elif isinstance(message.media, MessageMediaWebPage) and message.media.webpage.url:
                         # Extract links from web pages
@@ -202,12 +218,19 @@ class TelegramDownloader:
                         downloaded_count += 1
             
             except Exception as e:
-                print(f"Error processing message: {e}")
+                progress_bar.write(f"Error processing message: {e}")
         
         if links_file:
             links_file.close()
         
-        print(f"\nDownloaded/extracted {downloaded_count} items from {entity_name}.")
+        # Calculate final download speed
+        total_elapsed = time.time() - start_time
+        if total_elapsed > 0 and total_bytes > 0:
+            final_speed_mbps = (total_bytes * 8) / (total_elapsed * 1_000_000)
+            print(f"\nAverage download speed: {final_speed_mbps:.2f} Mbps")
+            print(f"Total data downloaded: {total_bytes / (1024*1024):.2f} MB")
+        
+        print(f"Downloaded/extracted {downloaded_count} items from {entity_name}.")
         if skipped_count > 0:
             print(f"Skipped {skipped_count} already existing files.")
 
